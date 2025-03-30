@@ -5,9 +5,8 @@ import ResultsComponent from "./components/ResultsComponent";
 import DetailsComponent from "./components/DetailsComponent";
 import axios from "axios";
 
-const apiUrl = process.env.REACT_APP_URL;
-console.log(process.env.REACT_APP_URL)
-
+const apiUrl = process.env.REACT_APP_URL || ''; // Default to empty string if undefined
+console.log('API URL:', process.env.REACT_APP_URL);
 
 const App = () => {
   const [page, setPage] = useState("home");
@@ -16,55 +15,104 @@ const App = () => {
   const [articleContent, setArticleContent] = useState(null);
   const [articleAnalysis, setArticleAnalysis] = useState(null);
   const [loading, setLoading] = React.useState(false);
-
+  const [error, setError] = React.useState(null);
 
   const handleView = async (articleId) => {
-    setLoading(true);
-    // get original article content
-    const selectedArticle = articles.find((article) => article.id === articleId);
-    setSelectedArticle(selectedArticle);
-    const parsedArticle = await parseArticle(selectedArticle.url);
-    const originalArticle = `
-    publisher: ${selectedArticle.publisher}\n
-    Date: ${selectedArticle.publishedAt}\n
-    Author: ${selectedArticle.author}\n
-    title: ${selectedArticle.title}\n
-    Article: ${parsedArticle.data}
-    `;
-    setArticleContent(originalArticle);
-    // Start the article analysis and get the task ID
-    const taskId = await startAnalysis(originalArticle);
+    try {
+      setLoading(true);
+      setError(null);
 
-    // Poll the server for the analysis result
-    const pollInterval = setInterval(async () => {
-      const result = await checkAnalysis(taskId);
+      // get original article content
+      const selectedArticle = articles.find((article) => article.id === articleId);
+      setSelectedArticle(selectedArticle);
 
-      if (result.status === "completed") {
-        clearInterval(pollInterval);
-        setArticleAnalysis(result.result.choices[0].message.content);
-        setLoading(false);
-        setPage("details");
-      }
-    }, 5000); // Poll every 5 seconds
+      const parsedArticleResponse = await parseArticle(selectedArticle.url);
+      const parsedArticle = typeof parsedArticleResponse.data === 'string'
+        ? parsedArticleResponse.data
+        : JSON.stringify(parsedArticleResponse.data);
+
+      const originalArticle = `
+      publisher: ${selectedArticle.publisher}\n
+      Date: ${selectedArticle.publishedAt}\n
+      Author: ${selectedArticle.author}\n
+      title: ${selectedArticle.title}\n
+      Article: ${parsedArticle}
+      `;
+
+      setArticleContent(originalArticle);
+
+      // Start the article analysis and get the task ID
+      const taskId = await startAnalysis(originalArticle);
+
+      // Poll the server for the analysis result
+      const pollInterval = setInterval(async () => {
+        try {
+          const result = await checkAnalysis(taskId);
+
+          if (result.status === "completed") {
+            clearInterval(pollInterval);
+
+            // Handle the new response structure which may have nested content
+            let analysisContent;
+            if (result.result?.choices?.[0]?.message?.content) {
+              // Original OpenAI response structure
+              analysisContent = result.result.choices[0].message.content;
+            } else if (typeof result.result === 'string') {
+              // Direct string result
+              analysisContent = result.result;
+            } else {
+              // Fallback for unexpected formats
+              analysisContent = JSON.stringify(result.result);
+            }
+
+            setArticleAnalysis(analysisContent);
+            setLoading(false);
+            setPage("details");
+          } else if (result.status === "failed") {
+            clearInterval(pollInterval);
+            setError(`Analysis failed: ${result.error || 'Unknown error'}`);
+            setLoading(false);
+          }
+        } catch (error) {
+          clearInterval(pollInterval);
+          setError(`Error checking analysis: ${error.message}`);
+          setLoading(false);
+        }
+      }, 5000); // Poll every 5 seconds
+    } catch (error) {
+      setError(`Error initiating article analysis: ${error.message}`);
+      setLoading(false);
+    }
   };
 
   const handleSearch = async (query) => {
     try {
+      setLoading(true);
+      setError(null);
+
       const response = await axios.post(
         `${apiUrl}/api/search`,
         { query }
-      )
-      const articles = response.data.articles.map((article, index) => ({
+      );
+
+      // Handle the new response structure which includes a status field
+      const responseData = response.data;
+      const articlesData = responseData.articles || responseData.data?.articles || [];
+
+      const articles = articlesData.map((article, index) => ({
         id: index,
         title: article.title,
         url: article.url,
-        author: article.author,
-        publisher: article.source.name,
+        author: article.author || 'Unknown',
+        publisher: article.source?.name || article.publisher || 'Unknown Source',
         publishedAt: article.publishedAt
       }));
+
       setArticles(articles);
+      setLoading(false);
     } catch (error) {
       console.error("Error fetching articles:", error);
+      setError(`Error searching articles: ${error.message}`);
       setLoading(false);
     }
   };
@@ -73,6 +121,7 @@ const App = () => {
     setSelectedArticle(null);
     setArticleContent(null);
     setArticleAnalysis(null);
+    setError(null);
     setPage("home");
   };
 
@@ -82,9 +131,12 @@ const App = () => {
         `${apiUrl}/api/start-analysis`,
         { content }
       );
+
+      // Handle the new response structure which includes a status field
       return response.data.taskId;
     } catch (error) {
       console.error("Error starting the article analysis:", error);
+      throw error;
     }
   };
 
@@ -96,6 +148,7 @@ const App = () => {
       return response.data;
     } catch (error) {
       console.error("Error checking the article analysis:", error);
+      throw error;
     }
   };
 
@@ -106,8 +159,9 @@ const App = () => {
       );
     } catch (error) {
       console.error("Error parsing the article:", error);
+      throw error;
     }
-  }
+  };
 
   return (
     <div className="App">
@@ -130,22 +184,27 @@ const App = () => {
         </Box>
       ) : (
         <>
-            <Container>
-              <CssBaseline />
-          {page === "home" && (
-            <>
-              <SearchComponent onSearch={handleSearch} />
-              <ResultsComponent articles={articles} onView={handleView} />
-            </>
-          )}
-          {page === "details" && (
-            <DetailsComponent
-                  article={articleContent}
-                  analysis={articleAnalysis}
-                  onBack={handleBack}
-            />
-          )}
-            </Container>
+          <Container>
+            <CssBaseline />
+            {error && (
+              <Box sx={{ mt: 2, p: 2, bgcolor: '#ffebee', borderRadius: 1 }}>
+                <Typography color="error">{error}</Typography>
+              </Box>
+            )}
+            {page === "home" && (
+              <>
+                <SearchComponent onSearch={handleSearch} />
+                <ResultsComponent articles={articles} onView={handleView} />
+              </>
+            )}
+            {page === "details" && (
+              <DetailsComponent
+                article={articleContent}
+                analysis={articleAnalysis}
+                onBack={handleBack}
+              />
+            )}
+          </Container>
         </>
       )}
     </div>
