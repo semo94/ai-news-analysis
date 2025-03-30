@@ -1,0 +1,30 @@
+# Node.js specific
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
+.env
+.env.production
+
+# React specific
+/build
+/node_modules
+/.pnp
+.pnp.js
+.cache
+dist/
+*.log
+*.txt
+
+# Dependency directories
+/jspm_packages/
+/bower_components/
+
+# Other files and directories
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.log
+*.swp
