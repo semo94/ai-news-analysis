@@ -2,6 +2,16 @@
 
 A full-stack news aggregation application that combines news search with AI-powered analysis to help readers identify bias and assess objectivity in news articles.
 
+## 📱 App In Action
+
+### Search and Results View
+![Search and Results View](./doc/search.png)
+*The home page showing search functionality and news article results*
+
+### Article Analysis View
+![Article Analysis View](./doc/analysis.png)
+*Detailed view of an article with AI-powered analysis showing objectivity score and bias detection*
+
 ## 🌟 Features
 
 - **News Search**: Find articles by keyword using the News API
