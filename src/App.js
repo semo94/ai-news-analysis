@@ -178,7 +178,7 @@ const App = () => {
           </Box>
           <Box>
             <Typography variant="h4" color="textSecondary">
-              A GPT magic is being brewed... Please be patient!
+              An AI magic is being brewed... Please be patient!
             </Typography>
           </Box>
         </Box>
